@@ -1,0 +1,111 @@
+#!/usr/bin/env python3
+"""Parse terminal scrollback for commands and their output, select via fzf.
+
+Reads scrollback from a file argument or stdin. Parses command boundaries
+using prompt markers — by default the starship markers ❯ (command input) and
+󱞩 (command duration, marks start of next prompt cycle); override with the
+PICK_CMD_PROMPT_START / PICK_CMD_PROMPT_END env vars (regexes matched against
+the start of each line). Presents commands in fzf with output preview, prints
+selected command blocks to stdout.
+"""
+
+import os
+import re
+import subprocess
+import sys
+import tempfile
+
+ANSI_RE = re.compile(
+    r'\x1b'
+    r'(?:'
+    r'\[[^a-zA-Z]*[a-zA-Z]'        # CSI: ESC [ ... letter
+    r'|\][^\a\x1b]*(?:\a|\x1b\\)'  # OSC: ESC ] ... BEL/ST
+    r'|\([A-Z]'                     # Charset: ESC ( letter
+    r'|[=>]'                        # DECKPAM/DECKPNM
+    r')'
+)
+PROMPT_START = re.compile(
+    os.environ.get('PICK_CMD_PROMPT_START', r'❯(.+)$'))  # command input line
+PROMPT_END = re.compile(
+    os.environ.get('PICK_CMD_PROMPT_END', r'󱞩'))  # next prompt's duration line
+
+
+def read_input():
+    if len(sys.argv) > 1:
+        with open(sys.argv[1], encoding='utf-8', errors='replace') as f:
+            return f.read()
+    if not sys.stdin.isatty():
+        return sys.stdin.read()
+    print("Usage: pick-cmd [scrollback_file]", file=sys.stderr)
+    print("  Reads scrollback from file argument or stdin", file=sys.stderr)
+    sys.exit(1)
+
+
+def strip_ansi(text):
+    return ANSI_RE.sub('', text).replace('\r', '')
+
+
+def parse_commands(lines):
+    """Extract command blocks from scrollback lines.
+
+    Each block is a list of strings: the first is '$ <command>',
+    followed by output lines, ending with the duration/status line.
+    """
+    commands = []
+    block = []
+    active = False
+
+    for line in lines:
+        if PROMPT_END.match(line):
+            if active and block:
+                block.append(line)
+                commands.append(block)
+            block = []
+            active = False
+        elif match := PROMPT_START.match(line):
+            active = True
+            block = ['$ ' + match.group(1).strip()]
+        elif active:
+            block.append(line)
+
+    return commands
+
+
+def select_with_fzf(commands):
+    """Present commands in fzf, return selected blocks."""
+    with tempfile.TemporaryDirectory() as td:
+        fzf_lines = []
+        for i, block in enumerate(commands):
+            with open(f'{td}/{i}', 'w') as f:
+                f.write('\n'.join(block))
+            fzf_lines.append(f'{i}\t{block[0]}')
+
+        proc = subprocess.run(
+            ['fzf', '--tac', '--multi', '+s', f'--preview=cat {td}/{{1}}'],
+            input='\n'.join(fzf_lines),
+            capture_output=True, text=True,
+        )
+        if proc.returncode != 0:
+            return []
+
+        selected = []
+        for line in proc.stdout.splitlines():
+            idx = int(line.split('\t', 1)[0])
+            selected.extend(commands[idx])
+        return selected
+
+
+def main():
+    raw = read_input()
+    lines = strip_ansi(raw).splitlines()
+    commands = parse_commands(lines)
+    if not commands:
+        return
+
+    selected = select_with_fzf(commands)
+    if selected:
+        print('\n'.join(selected).strip())
+
+
+if __name__ == '__main__':
+    main()

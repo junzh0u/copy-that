@@ -1,0 +1,19 @@
+#!/bin/sh
+# osc52: Copy input to system clipboard via OSC 52, compatible with tmux
+
+# Read input
+input=$(cat)
+
+# Base64 encode the input
+encoded=$(printf "%s" "$input" | base64 | tr -d '\n')
+
+# Construct the OSC52 escape sequence
+esc="\033]52;c;${encoded}\a"
+
+# If inside tmux, wrap the sequence so tmux passes it through
+if [ -n "$TMUX" ]; then
+  esc="\033Ptmux;\033${esc}\033\\"
+fi
+
+# Output the escape sequence
+printf "$esc"

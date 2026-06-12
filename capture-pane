@@ -1,0 +1,23 @@
+#!/usr/bin/env zsh
+# Capture terminal scrollback to stdout.
+# Detects tmux or Ghostty and uses the appropriate method.
+
+if [[ -n $TMUX ]]; then
+  tmux capture-pane -pS -
+elif [[ -n $GHOSTTY_RESOURCES_DIR ]]; then
+  osascript -e '
+tell application "Ghostty"
+    set t to focused terminal of selected tab of front window
+    perform action "write_screen_file:copy" on t
+end tell
+' > /dev/null
+  scrollback_file="$(pbpaste)"
+  if [[ ! -f $scrollback_file ]]; then
+    echo "Failed to get scrollback file from Ghostty" >&2
+    exit 1
+  fi
+  cat "$scrollback_file"
+else
+  echo "capture-pane: unsupported terminal (need tmux or Ghostty)" >&2
+  exit 1
+fi
