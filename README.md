@@ -6,12 +6,13 @@ work in tmux and Ghostty, on your own machine and over SSH.
 The headline act is an alias:
 
 ```zsh
-alias ph="capture-pane | pick-cmd | pbcopy"
+alias copy-that="capture-pane | pick-cmd | pbcopy"
 ```
 
-Type `ph`, fzf-pick any command you've already run, and its full output lands
-on your clipboard — no re-running it, no dragging a mouse selection across
-pages of scrollback, no caring where your shell happens to be. The long-form
+Type `copy-that`, fzf-pick any command you've already run, and its full output
+lands on your clipboard — no re-running it, no dragging a mouse selection
+across pages of scrollback, no caring where your shell happens to be. (Alias
+it to something shorter — mine is two letters.) The long-form
 story is in [this blog post](https://junz.info/writing/ghostty-applescript-tmux/).
 
 ## The tools
@@ -68,8 +69,8 @@ set -g allow-passthrough on
 since tmux 3.3 turned passthrough off by default, and without it the sequence
 is dropped silently.
 
-The glue that makes `ph` portable is one line of zsh — any machine without a
-real `pbcopy` grows one:
+The glue that makes `copy-that` portable is one line of zsh — any machine
+without a real `pbcopy` grows one:
 
 ```zsh
 (( $+commands[pbcopy] )) || alias pbcopy=osc52
