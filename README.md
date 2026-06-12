@@ -72,12 +72,16 @@ To make the `copy-that` alias work unchanged on machines without a real
 
 ## Install
 
-Put the three scripts on your `PATH`:
+Symlink the three scripts somewhere on your `PATH` — e.g. `~/.local/bin`:
 
 ```sh
 git clone https://github.com/junzh0u/copy-that.git
-ln -s "$PWD"/copy-that/capture-pane "$PWD"/copy-that/pick-cmd "$PWD"/copy-that/osc52 ~/bin/
+mkdir -p ~/.local/bin
+ln -s "$PWD"/copy-that/capture-pane "$PWD"/copy-that/pick-cmd "$PWD"/copy-that/osc52 ~/.local/bin/
 ```
+
+(`~/.local/bin` isn't on `PATH` everywhere — add
+`export PATH="$HOME/.local/bin:$PATH"` to your shell rc if it isn't.)
 
 Requirements: `zsh` (capture-pane), POSIX `sh` (osc52), Python 3 (stdlib
 only) and [fzf](https://github.com/junegunn/fzf) (pick-cmd). Capturing needs
