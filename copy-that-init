@@ -9,8 +9,9 @@ confirm the result before anything is final. Nothing is sent to the LLM until
 you've seen the exact payload and said yes — scrollback can contain secrets.
 
 The LLM is any command that reads a prompt on stdin and prints a completion:
-auto-detected ("claude -p", then "llm"), or set COPY_THAT_LLM / pass --llm
-(e.g. "ollama run llama3.2" for fully local inference).
+auto-detected ("claude -p", then "codex exec", then "llm"), or set
+COPY_THAT_LLM / pass --llm (e.g. "ollama run llama3.2" for fully local
+inference).
 """
 
 import argparse
@@ -188,10 +189,14 @@ def main():
         if not llm:
             if shutil.which('claude'):
                 llm = 'claude -p'
+            elif shutil.which('codex'):
+                # codex exec refuses to run outside a git repo without the
+                # skip flag, and --ephemeral avoids persisting a session.
+                llm = 'codex exec --skip-git-repo-check --ephemeral'
             elif shutil.which('llm'):
                 llm = 'llm'
             else:
-                die('no LLM CLI found — install claude or llm,'
+                die('no LLM CLI found — install claude, codex, or llm,'
                     ' or set COPY_THAT_LLM')
 
         print(f'About to send these {len(sample_lines)} lines to `{llm}`:')

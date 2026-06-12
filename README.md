@@ -93,9 +93,10 @@ copy-that-init                   # capture the live terminal (tmux or Ghostty)
 copy-that-init --file dump.txt   # or use a saved scrollback
 ```
 
-It shells out to whatever LLM CLI you already have — `claude -p` and `llm` are
-auto-detected; set `COPY_THAT_LLM` for anything else that reads a prompt on
-stdin (e.g. `COPY_THAT_LLM='ollama run llama3.2'` for fully local inference).
+It shells out to whatever LLM CLI you already have — `claude -p`, `codex exec`,
+and `llm` are auto-detected, in that order; set `COPY_THAT_LLM` for anything
+else that reads a prompt on stdin (e.g. `COPY_THAT_LLM='ollama run llama3.2'`
+for fully local inference).
 No API keys are handled, and nothing is sent until it shows you the exact
 sample and you say yes — scrollback can contain secrets, so read it first.
 
