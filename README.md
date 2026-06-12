@@ -13,7 +13,7 @@ Type `copy-that`, fzf-pick any command you've already run, and its full
 output lands on your clipboard — even when your clipboard is three SSH hops
 away. Alias it to something shorter; mine is two letters.
 
-[![demo](https://asciinema.org/a/vamCS4akEThN0UHd.svg)](https://asciinema.org/a/vamCS4akEThN0UHd)
+[![demo](https://asciinema.org/a/giRxMmOWGMK5oPgy.svg)](https://asciinema.org/a/giRxMmOWGMK5oPgy)
 
 The backstory — how this replaced living in tmux — is in
 [this post](https://junz.info/writing/ghostty-applescript-tmux/).
