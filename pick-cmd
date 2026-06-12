@@ -5,8 +5,10 @@ Reads scrollback from a file argument or stdin. Parses command boundaries
 using prompt markers — by default the starship markers ❯ (command input) and
 󱞩 (command duration, marks start of next prompt cycle); override with the
 PICK_CMD_PROMPT_START / PICK_CMD_PROMPT_END env vars (regexes matched against
-the start of each line). Presents commands in fzf with output preview, prints
-selected command blocks to stdout.
+the start of each line). Set PICK_CMD_PROMPT_END='' for prompts with no
+reliable closing line: blocks then end at the next command line instead.
+Presents commands in fzf with output preview, prints selected command blocks
+to stdout; --list skips fzf and prints just the parsed command lines.
 """
 
 import os
@@ -26,17 +28,17 @@ ANSI_RE = re.compile(
 )
 PROMPT_START = re.compile(
     os.environ.get('PICK_CMD_PROMPT_START', r'❯(.+)$'))  # command input line
-PROMPT_END = re.compile(
-    os.environ.get('PICK_CMD_PROMPT_END', r'󱞩'))  # next prompt's duration line
+_END = os.environ.get('PICK_CMD_PROMPT_END', r'󱞩')  # next prompt's duration line
+PROMPT_END = re.compile(_END) if _END else None  # '' -> close at next command
 
 
-def read_input():
-    if len(sys.argv) > 1:
-        with open(sys.argv[1], encoding='utf-8', errors='replace') as f:
+def read_input(args):
+    if args:
+        with open(args[0], encoding='utf-8', errors='replace') as f:
             return f.read()
     if not sys.stdin.isatty():
         return sys.stdin.read()
-    print("Usage: pick-cmd [scrollback_file]", file=sys.stderr)
+    print("Usage: pick-cmd [--list] [scrollback_file]", file=sys.stderr)
     print("  Reads scrollback from file argument or stdin", file=sys.stderr)
     sys.exit(1)
 
@@ -50,23 +52,35 @@ def parse_commands(lines):
 
     Each block is a list of strings: the first is '$ <command>',
     followed by output lines, ending with the duration/status line.
+    Without PROMPT_END (PICK_CMD_PROMPT_END=''), a block instead ends at
+    the next command line, absorbing any prompt banner lines before it.
     """
     commands = []
     block = []
     active = False
 
     for line in lines:
-        if PROMPT_END.match(line):
+        if PROMPT_END and PROMPT_END.match(line):
             if active and block:
                 block.append(line)
                 commands.append(block)
             block = []
             active = False
         elif match := PROMPT_START.match(line):
-            active = True
-            block = ['$ ' + match.group(1).strip()]
+            if PROMPT_END is None:
+                if active and block:
+                    commands.append(block)
+                cmd = match.group(1).strip()
+                active = bool(cmd)
+                block = ['$ ' + cmd] if cmd else []
+            else:
+                active = True
+                block = ['$ ' + match.group(1).strip()]
         elif active:
             block.append(line)
+
+    if PROMPT_END is None and active and block:
+        commands.append(block)
 
     return commands
 
@@ -96,10 +110,19 @@ def select_with_fzf(commands):
 
 
 def main():
-    raw = read_input()
+    args = sys.argv[1:]
+    list_only = '--list' in args
+    if list_only:
+        args = [a for a in args if a != '--list']
+
+    raw = read_input(args)
     lines = strip_ansi(raw).splitlines()
     commands = parse_commands(lines)
     if not commands:
+        return
+
+    if list_only:
+        print('\n'.join(block[0] for block in commands))
         return
 
     selected = select_with_fzf(commands)

@@ -1,0 +1,261 @@
+#!/usr/bin/env python3
+"""Work out pick-cmd's prompt markers for your terminal, with an LLM's help.
+
+Captures a scrollback sample (or reads one from --file), first checks whether
+the current markers already parse it, and only then asks an LLM CLI to propose
+PICK_CMD_PROMPT_START / PICK_CMD_PROMPT_END regexes. Every proposal is
+validated by running the real parser (pick-cmd --list) on your sample, and you
+confirm the result before anything is final. Nothing is sent to the LLM until
+you've seen the exact payload and said yes — scrollback can contain secrets.
+
+The LLM is any command that reads a prompt on stdin and prints a completion:
+auto-detected ("claude -p", then "llm"), or set COPY_THAT_LLM / pass --llm
+(e.g. "ollama run llama3.2" for fully local inference).
+"""
+
+import argparse
+import json
+import os
+import re
+import shlex
+import shutil
+import subprocess
+import sys
+import tempfile
+
+HERE = os.path.dirname(os.path.realpath(__file__))
+MAX_ATTEMPTS = 3
+SEPARATOR = '─' * 60
+
+BASE_PROMPT = '''\
+You are configuring a terminal-scrollback parser. Below is a sample of a
+user's terminal scrollback. Work out the shell prompt's structure and propose
+two Python regular expressions:
+
+- prompt_start: tested with re.match() against every line (anchored at the
+  start of the line). It must match exactly the lines where the user typed a
+  command, and group 1 must capture the command text.
+- prompt_end: tested the same way. It must match a line that reliably appears
+  after EVERY command's output (for example a duration or status line printed
+  by the next prompt). If no such line exists for every command, use null —
+  the parser will then close each block at the next prompt_start instead.
+
+Answer with ONLY one JSON object, no prose, no code fences:
+{"prompt_start": "<regex>", "prompt_end": "<regex or null>", "notes": "<one short sentence>"}
+
+Remember JSON escaping: a literal backslash in a regex is \\\\ in the JSON string.
+'''
+
+
+def die(msg):
+    print(f'copy-that-init: {msg}', file=sys.stderr)
+    sys.exit(1)
+
+
+def tool(name):
+    """Prefer the sibling script from this checkout, fall back to PATH."""
+    sibling = os.path.join(HERE, name)
+    if os.access(sibling, os.X_OK):
+        return sibling
+    found = shutil.which(name)
+    if found:
+        return found
+    die(f'cannot find {name}')
+
+
+def capture_sample(num_lines):
+    r = subprocess.run([tool('capture-pane')], capture_output=True, text=True)
+    if r.returncode != 0:
+        err = r.stderr.strip() or 'is this tmux or Ghostty?'
+        die(f'capture-pane failed: {err} — or pass --file')
+    return r.stdout.splitlines()[-num_lines:]
+
+
+def parse_with(sample_file, start, end):
+    """Run the real parser on the sample.
+
+    Returns the parsed command lines, or None if the regexes didn't compile.
+    With start=None, the current environment's markers (or the defaults) are
+    used as-is.
+    """
+    env = os.environ.copy()
+    if start is not None:
+        env['PICK_CMD_PROMPT_START'] = start
+        env['PICK_CMD_PROMPT_END'] = end if end is not None else ''
+    r = subprocess.run([tool('pick-cmd'), '--list', sample_file],
+                       env=env, capture_output=True, text=True)
+    if r.returncode != 0:
+        return None
+    return [line for line in r.stdout.splitlines() if line.strip()]
+
+
+def confirm(question):
+    try:
+        answer = input(f'{question} [y/N] ')
+    except EOFError:
+        return False
+    return answer.strip().lower() in ('y', 'yes')
+
+
+def ask_llm(llm_cmd, prompt):
+    try:
+        r = subprocess.run(shlex.split(llm_cmd), input=prompt,
+                           capture_output=True, text=True, timeout=300)
+    except FileNotFoundError:
+        die(f'LLM command not found: {llm_cmd}')
+    except subprocess.TimeoutExpired:
+        return None
+    if r.returncode != 0:
+        print(f'  LLM command failed: {r.stderr.strip()}', file=sys.stderr)
+        return None
+    return r.stdout
+
+
+def extract_json(text):
+    m = re.search(r'\{.*\}', text, re.DOTALL)
+    if not m:
+        return None
+    try:
+        obj = json.loads(m.group(0))
+    except ValueError:
+        return None
+    if not isinstance(obj, dict) or not obj.get('prompt_start'):
+        return None
+    return obj
+
+
+def build_prompt(sample_text, history):
+    prompt = BASE_PROMPT
+    if history:
+        prompt += '\nEarlier proposals were rejected:\n'
+        for item in history:
+            prompt += f'- {json.dumps(item)}\n'
+    prompt += f'\nScrollback sample:\n{sample_text}\n'
+    return prompt
+
+
+def emit_exports(start, end):
+    print('\nAdd these to your shell rc:\n')
+    print(f'  export PICK_CMD_PROMPT_START={shlex.quote(start)}')
+    if end:
+        print(f'  export PICK_CMD_PROMPT_END={shlex.quote(end)}')
+    else:
+        print("  export PICK_CMD_PROMPT_END=''"
+              '  # no closing line: blocks end at the next command')
+
+
+def main():
+    ap = argparse.ArgumentParser(
+        prog='copy-that-init',
+        description='Infer pick-cmd prompt markers from your scrollback'
+                    ' with an LLM CLI, validating against the real parser.')
+    ap.add_argument('--file', help='read scrollback from a file instead of'
+                                   ' capturing the live terminal')
+    ap.add_argument('--lines', type=int, default=200,
+                    help='sample size in lines (default: 200)')
+    ap.add_argument('--llm', help='LLM command reading a prompt on stdin'
+                                  ' (default: $COPY_THAT_LLM, claude -p, llm)')
+    ap.add_argument('--force', action='store_true',
+                    help='ask the LLM even if the current markers work')
+    args = ap.parse_args()
+
+    if args.file:
+        with open(args.file, encoding='utf-8', errors='replace') as f:
+            sample_lines = f.read().splitlines()[-args.lines:]
+    else:
+        sample_lines = capture_sample(args.lines)
+    if not sample_lines:
+        die('scrollback sample is empty')
+    sample_text = '\n'.join(sample_lines)
+
+    with tempfile.NamedTemporaryFile('w', suffix='.scrollback',
+                                     delete=False) as tf:
+        tf.write(sample_text + '\n')
+        sample_file = tf.name
+
+    try:
+        if not args.force:
+            found = parse_with(sample_file, None, None)
+            if found and len(found) >= 2:
+                print(f'Current markers already parse this scrollback —'
+                      f' {len(found)} commands found, e.g.:')
+                for line in found[-5:]:
+                    print(f'  {line}')
+                print('Nothing to do. (Use --force to ask the LLM anyway.)')
+                return
+
+        llm = args.llm or os.environ.get('COPY_THAT_LLM')
+        if not llm:
+            if shutil.which('claude'):
+                llm = 'claude -p'
+            elif shutil.which('llm'):
+                llm = 'llm'
+            else:
+                die('no LLM CLI found — install claude or llm,'
+                    ' or set COPY_THAT_LLM')
+
+        print(f'About to send these {len(sample_lines)} lines to `{llm}`:')
+        print(SEPARATOR)
+        print(sample_text)
+        print(SEPARATOR)
+        print('Scrollback can contain secrets — read it before you agree.')
+        if not confirm(f'Send to `{llm}`?'):
+            print('Aborted; nothing was sent.')
+            return
+
+        history = []
+        for attempt in range(1, MAX_ATTEMPTS + 1):
+            print(f'Asking `{llm}` (attempt {attempt}/{MAX_ATTEMPTS})…')
+            reply = ask_llm(llm, build_prompt(sample_text, history))
+            proposal = extract_json(reply or '')
+            if proposal is None:
+                print('  → reply was not the expected JSON; retrying.')
+                history.append({'outcome': 'reply was not valid JSON'})
+                continue
+
+            start = proposal['prompt_start']
+            end = proposal.get('prompt_end')
+            print(f'  proposed start: {start!r}')
+            print(f'  proposed end:   {end!r}')
+            if proposal.get('notes'):
+                print(f'  notes: {proposal["notes"]}')
+
+            found = parse_with(sample_file, start, end)
+            if found is None:
+                print('  → regex did not compile; retrying.')
+                history.append({'prompt_start': start, 'prompt_end': end,
+                                'outcome': 'regex failed to compile'})
+                continue
+            if not found:
+                print('  → parsed zero commands from the sample; retrying.')
+                history.append({'prompt_start': start, 'prompt_end': end,
+                                'outcome': 'parsed zero commands'})
+                continue
+
+            print(f'Parsed {len(found)} commands from the sample:')
+            for line in found[-15:]:
+                print(f'  {line}')
+            if confirm('Do these match commands you actually ran?'):
+                emit_exports(start, end)
+                return
+
+            try:
+                feedback = input('What looks wrong? (blank to just retry) ')
+            except EOFError:
+                feedback = ''
+            outcome = 'user rejected the parsed command list'
+            if feedback.strip():
+                outcome += f': {feedback.strip()}'
+            history.append({'prompt_start': start, 'prompt_end': end,
+                            'outcome': outcome})
+
+        print(f'No working markers after {MAX_ATTEMPTS} attempts.'
+              ' Set PICK_CMD_PROMPT_START / PICK_CMD_PROMPT_END manually —'
+              ' the README explains the format.')
+        sys.exit(1)
+    finally:
+        os.unlink(sample_file)
+
+
+if __name__ == '__main__':
+    main()

@@ -32,6 +32,8 @@ Ghostty.
 Splits a scrollback dump (stdin or file argument) into command blocks —
 command, output, duration — and presents them in fzf: newest first,
 multi-select, full-block preview. Picked blocks print to stdout.
+(`pick-cmd --list` skips fzf and prints just the parsed command lines —
+handy for checking markers.)
 
 Boundaries are matched with prompt markers. The defaults expect a
 [starship](https://starship.rs/) prompt where every command line starts with
@@ -52,7 +54,10 @@ or fast commands are silently dropped from the picker.
 
 Different prompt? Set `PICK_CMD_PROMPT_START` (regex; group 1 captures the
 command text) and `PICK_CMD_PROMPT_END` (regex; marks the line that closes a
-command's output). Both are matched at the start of each line.
+command's output). Both are matched at the start of each line. If no line
+reliably closes every command's output, set `PICK_CMD_PROMPT_END=''` —
+blocks then end at the next command line instead. Or skip the regex-writing
+entirely and let `copy-that-init` (below) work them out.
 
 ## osc52
 
@@ -74,21 +79,43 @@ To make the `copy-that` alias work unchanged on machines without a real
 (( $+commands[pbcopy] )) || alias pbcopy=osc52
 ```
 
+## copy-that-init
+
+Don't want to write the marker regexes yourself? `copy-that-init` infers them
+from your actual terminal: it captures a scrollback sample, checks whether the
+current markers already parse it, and only then asks an LLM CLI to propose new
+ones — each proposal is validated by running the real parser on your sample
+and confirmed by you, and the result is printed as ready-to-paste `export`
+lines.
+
+```sh
+copy-that-init                   # capture the live terminal (tmux or Ghostty)
+copy-that-init --file dump.txt   # or use a saved scrollback
+```
+
+It shells out to whatever LLM CLI you already have — `claude -p` and `llm` are
+auto-detected; set `COPY_THAT_LLM` for anything else that reads a prompt on
+stdin (e.g. `COPY_THAT_LLM='ollama run llama3.2'` for fully local inference).
+No API keys are handled, and nothing is sent until it shows you the exact
+sample and you say yes — scrollback can contain secrets, so read it first.
+
 ## Install
 
-Symlink the three scripts somewhere on your `PATH` — e.g. `~/.local/bin`:
+Symlink the scripts somewhere on your `PATH` — e.g. `~/.local/bin`:
 
 ```sh
 git clone https://github.com/junzh0u/copy-that.git
 mkdir -p ~/.local/bin
-ln -s "$PWD"/copy-that/capture-pane "$PWD"/copy-that/pick-cmd "$PWD"/copy-that/osc52 ~/.local/bin/
+ln -s "$PWD"/copy-that/capture-pane "$PWD"/copy-that/pick-cmd \
+      "$PWD"/copy-that/osc52 "$PWD"/copy-that/copy-that-init ~/.local/bin/
 ```
 
 (`~/.local/bin` isn't on `PATH` everywhere — add
 `export PATH="$HOME/.local/bin:$PATH"` to your shell rc if it isn't.)
 
-Requirements: `zsh` (capture-pane), POSIX `sh` (osc52), Python 3 (stdlib
-only) and [fzf](https://github.com/junegunn/fzf) (pick-cmd). Capturing needs
+Requirements: `zsh` (capture-pane), POSIX `sh` (osc52), Python 3 — stdlib
+only — for pick-cmd and copy-that-init, [fzf](https://github.com/junegunn/fzf)
+for pick-cmd, and an LLM CLI only if you use copy-that-init. Capturing needs
 tmux, or Ghostty on macOS.
 
 ## License
