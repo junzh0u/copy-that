@@ -15,8 +15,10 @@ away. Alias it to something shorter; mine is two letters.
 
 [![demo](https://asciinema.org/a/giRxMmOWGMK5oPgy.svg)](https://asciinema.org/a/giRxMmOWGMK5oPgy)
 
-The backstory — how this replaced living in tmux — is in
-[this post](https://junz.info/writing/ghostty-applescript-tmux/).
+The deep dive — how each stage hides a difference between terminals and
+hosts — is in [this post](https://junz.info/writing/copy-that/); the
+backstory of leaving tmux is in
+[this one](https://junz.info/writing/ghostty-applescript-tmux/).
 
 ## capture-pane
 
