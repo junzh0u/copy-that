@@ -9,28 +9,27 @@ The headline act is an alias:
 alias copy-that="capture-pane | pick-cmd | pbcopy"
 ```
 
-Type `copy-that`, fzf-pick any command you've already run, and its full output
-lands on your clipboard — no re-running it, no dragging a mouse selection
-across pages of scrollback, no caring where your shell happens to be. (Alias
-it to something shorter — mine is two letters.) The long-form
-story is in [this blog post](https://junz.info/writing/ghostty-applescript-tmux/).
+Type `copy-that`, fzf-pick any command you've already run, and its full
+output lands on your clipboard — even when your clipboard is three SSH hops
+away. Alias it to something shorter; mine is two letters.
 
-## The tools
+The backstory — how this replaced living in tmux — is in
+[this post](https://junz.info/writing/ghostty-applescript-tmux/).
 
-### capture-pane
+## capture-pane
 
-Dumps the terminal's scrollback (visible screen included) to stdout. Inside
-tmux it defers to `tmux capture-pane -pS -`; in Ghostty it drives the
-[AppleScript bridge](https://ghostty.org/docs/features/applescript). Anything
-downstream just reads stdin and never learns which terminal it came from.
+Dumps the terminal's scrollback, visible screen included, to stdout. Uses
+`tmux capture-pane -pS -` inside tmux and the
+[AppleScript bridge](https://ghostty.org/docs/features/applescript) in
+Ghostty.
 
-### pick-cmd
+## pick-cmd
 
-Splits a scrollback dump into command blocks (command, output, duration line),
-presents them in fzf — newest first, multi-select, full-block preview — and
-prints your picks to stdout.
+Splits a scrollback dump (stdin or file argument) into command blocks —
+command, output, duration — and presents them in fzf: newest first,
+multi-select, full-block preview. Picked blocks print to stdout.
 
-Block boundaries are found by matching prompt markers. The defaults expect a
+Boundaries are matched with prompt markers. The defaults expect a
 [starship](https://starship.rs/) prompt where every command line starts with
 `❯` and the next prompt opens with a `󱞩` duration line:
 
@@ -44,33 +43,28 @@ format = '󱞩 [$duration]($style) '
 min_time = 0
 ```
 
-`min_time = 0` matters: the closing marker has to appear after *every*
-command, or fast commands are silently dropped from the picker.
+`min_time = 0` is required: the closing marker must follow *every* command,
+or fast commands are silently dropped from the picker.
 
-Different prompt? Set `PICK_CMD_PROMPT_START` and `PICK_CMD_PROMPT_END` to
-regexes matched against the start of each line: the start regex should capture
-the command text in group 1; the end regex marks the line that closes the
-previous command's output.
+Different prompt? Set `PICK_CMD_PROMPT_START` (regex; group 1 captures the
+command text) and `PICK_CMD_PROMPT_END` (regex; marks the line that closes a
+command's output). Both are matched at the start of each line.
 
-### osc52
+## osc52
 
-Reads stdin and copies it to your *local* system clipboard from anywhere —
-over SSH, inside tmux, both at once — by emitting an
+Copies stdin to your local system clipboard from anywhere — over SSH, inside
+tmux, both at once — via an
 [OSC 52](https://invisible-island.net/xterm/ctlseqs/ctlseqs.html) escape
-sequence that the terminal emulator on your side of the connection interprets.
-No X11 forwarding, no network clipboard.
-
-Inside tmux you also need
+sequence: your terminal emulator does the clipboard write, so no X11
+forwarding is involved. Inside tmux, passthrough must be enabled (it's off by
+default since tmux 3.3 and fails silently):
 
 ```tmux
 set -g allow-passthrough on
 ```
 
-since tmux 3.3 turned passthrough off by default, and without it the sequence
-is dropped silently.
-
-The glue that makes `copy-that` portable is one line of zsh — any machine
-without a real `pbcopy` grows one:
+To make the `copy-that` alias work unchanged on machines without a real
+`pbcopy`, polyfill it:
 
 ```zsh
 (( $+commands[pbcopy] )) || alias pbcopy=osc52
@@ -78,16 +72,16 @@ without a real `pbcopy` grows one:
 
 ## Install
 
-Put the three scripts somewhere on your `PATH`:
+Put the three scripts on your `PATH`:
 
 ```sh
 git clone https://github.com/junzh0u/copy-that.git
 ln -s "$PWD"/copy-that/capture-pane "$PWD"/copy-that/pick-cmd "$PWD"/copy-that/osc52 ~/bin/
 ```
 
-Requirements: `zsh` (capture-pane), POSIX `sh` (osc52), Python 3 (stdlib only)
-and [fzf](https://github.com/junegunn/fzf) (pick-cmd). The Ghostty capture
-path is macOS-only; capturing otherwise requires tmux.
+Requirements: `zsh` (capture-pane), POSIX `sh` (osc52), Python 3 (stdlib
+only) and [fzf](https://github.com/junegunn/fzf) (pick-cmd). Capturing needs
+tmux, or Ghostty on macOS.
 
 ## License
 
