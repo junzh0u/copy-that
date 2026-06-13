@@ -100,6 +100,24 @@ for fully local inference).
 No API keys are handled, and nothing is sent until it shows you the exact
 sample and you say yes — scrollback can contain secrets, so read it first.
 
+## pane-words.zsh
+
+A zsh library (sourced, not run) that feeds the scrollback back into tab
+completion: any word already on screen — filenames, hashes, hostnames, flags,
+path components — becomes a completion candidate, captured via `capture-pane`
+so it works in tmux and Ghostty alike. It also binds `Ctrl+]` to an fzf
+picker over the same words for when you'd rather fuzzy-search than tab.
+
+```zsh
+source /path/to/copy-that/pane-words.zsh
+```
+
+Note it sets the completer chain wholesale
+(`_expand_alias _complete _ignored _pane_words_completer`, so pane words only
+kick in when nothing else matches). If you already customize
+`zstyle ':completion:*' completer`, append `_pane_words_completer` to your
+own chain instead of sourcing the zstyle line as-is.
+
 ## Install
 
 Symlink the scripts somewhere on your `PATH` — e.g. `~/.local/bin`:
@@ -114,10 +132,14 @@ ln -s "$PWD"/copy-that/capture-pane "$PWD"/copy-that/pick-cmd \
 (`~/.local/bin` isn't on `PATH` everywhere — add
 `export PATH="$HOME/.local/bin:$PATH"` to your shell rc if it isn't.)
 
-Requirements: `zsh` (capture-pane), POSIX `sh` (osc52), Python 3 — stdlib
-only — for pick-cmd and copy-that-init, [fzf](https://github.com/junegunn/fzf)
-for pick-cmd, and an LLM CLI only if you use copy-that-init. Capturing needs
-tmux, or Ghostty on macOS.
+`pane-words.zsh` isn't a command — `source` it from your `.zshrc` instead
+(see above).
+
+Requirements: `zsh` (capture-pane, pane-words.zsh), POSIX `sh` (osc52),
+Python 3 — stdlib only — for pick-cmd and copy-that-init,
+[fzf](https://github.com/junegunn/fzf) for pick-cmd and the pane-words
+`Ctrl+]` widget, and an LLM CLI only if you use copy-that-init. Capturing
+needs tmux, or Ghostty on macOS.
 
 ## License
 
