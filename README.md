@@ -1,7 +1,8 @@
 # copy-that
 
 Clipboard and scrollback tools that follow you anywhere — the same commands
-work in tmux and Ghostty, on your own machine and over SSH.
+work in tmux, [herdr](https://herdr.dev), and Ghostty, on your own machine
+and over SSH.
 
 The headline act is an alias:
 
@@ -23,9 +24,13 @@ backstory of leaving tmux is in
 ## capture-pane
 
 Dumps the terminal's scrollback, visible screen included, to stdout. Uses
-`tmux capture-pane -pS -` inside tmux and the
+`tmux capture-pane -pS -` inside tmux, `herdr pane read` inside a
+[herdr](https://herdr.dev) pane (capped at the 1000 lines its socket API
+serves), and the
 [AppleScript bridge](https://ghostty.org/docs/features/applescript) in
-Ghostty.
+Ghostty. Innermost layer wins: tmux nested inside a herdr pane captures
+tmux's deeper scrollback, and a herdr pane beats Ghostty, whose capture
+would grab the whole herdr UI rather than the one pane.
 
 ## pick-cmd
 

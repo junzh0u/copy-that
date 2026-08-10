@@ -1,9 +1,16 @@
 #!/usr/bin/env zsh
 # Capture terminal scrollback to stdout.
-# Detects tmux or Ghostty and uses the appropriate method.
+# Detects tmux, herdr, or Ghostty and uses the appropriate method.
+# Innermost layer first: tmux may run nested inside a herdr pane (its
+# scrollback is the deeper one), and a herdr pane beats Ghostty (whose
+# capture would grab the whole herdr UI, not just this pane).
 
 if [[ -n $TMUX ]]; then
   tmux capture-pane -pS -
+elif [[ -n $HERDR_PANE_ID ]]; then
+  # Default depth is roughly the viewport; a large --lines asks for the whole
+  # snapshot, which herdr's socket API caps at 1000 lines (v0.8.0)
+  herdr pane read $HERDR_PANE_ID --lines 100000
 elif [[ -n $GHOSTTY_RESOURCES_DIR ]]; then
   osascript -e '
 tell application "Ghostty"
@@ -18,6 +25,6 @@ end tell
   fi
   cat "$scrollback_file"
 else
-  echo "capture-pane: unsupported terminal (need tmux or Ghostty)" >&2
+  echo "capture-pane: unsupported terminal (need tmux, herdr, or Ghostty)" >&2
   exit 1
 fi

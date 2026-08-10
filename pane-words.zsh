@@ -1,6 +1,6 @@
 # Pane words autocomplete
 # Provides words from terminal scrollback as completion candidates
-# Works in tmux and Ghostty via capture-pane
+# Works in tmux, herdr, and Ghostty via capture-pane
 
 _pane_words_get() {
     setopt LOCAL_OPTIONS NO_EXTENDED_GLOB
