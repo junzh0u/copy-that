@@ -28,9 +28,14 @@ Dumps the terminal's scrollback, visible screen included, to stdout. Uses
 [herdr](https://herdr.dev) pane (capped at the 1000 lines its socket API
 serves), and the
 [AppleScript bridge](https://ghostty.org/docs/features/applescript) in
-Ghostty. Innermost layer wins: tmux nested inside a herdr pane captures
-tmux's deeper scrollback, and a herdr pane beats Ghostty, whose capture
-would grab the whole herdr UI rather than the one pane.
+Ghostty. With one active multiplexer, automatic detection captures it ahead
+of Ghostty, whose capture would grab the whole multiplexer UI rather than one
+pane.
+
+When both `TMUX` and `HERDR_PANE_ID` are present, their environment variables
+cannot reveal which multiplexer is innermost, so automatic capture refuses to
+guess. Use `capture-pane --tmux` or `capture-pane --herdr` to choose the layer;
+`capture-pane --ghostty` deliberately captures the whole outer Ghostty surface.
 
 ## pick-cmd
 

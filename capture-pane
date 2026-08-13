@@ -1,17 +1,54 @@
 #!/usr/bin/env zsh
 # Capture terminal scrollback to stdout.
 # Detects tmux, herdr, or Ghostty and uses the appropriate method.
-# Innermost layer first: tmux may run nested inside a herdr pane (its
-# scrollback is the deeper one), and a herdr pane beats Ghostty (whose
-# capture would grab the whole herdr UI, not just this pane).
+# Ghostty is always the outer terminal, but TMUX and HERDR_PANE_ID don't reveal
+# which multiplexer is nested inside the other. Require an explicit choice
+# when both are present rather than silently capturing the wrong layer.
 
-if [[ -n $TMUX ]]; then
-  tmux capture-pane -pS -
+if (( $# > 1 )) || { (( $# == 1 )) && [[ $1 != (--tmux|--herdr|--ghostty) ]]; }; then
+  echo "Usage: capture-pane [--tmux|--herdr|--ghostty]" >&2
+  exit 2
+fi
+
+if [[ $1 == --tmux ]]; then
+  [[ -n $TMUX ]] || {
+    echo "capture-pane: --tmux requires a tmux pane" >&2
+    exit 1
+  }
+  backend=tmux
+elif [[ $1 == --herdr ]]; then
+  [[ -n $HERDR_PANE_ID ]] || {
+    echo "capture-pane: --herdr requires a herdr pane" >&2
+    exit 1
+  }
+  backend=herdr
+elif [[ $1 == --ghostty ]]; then
+  [[ -n $GHOSTTY_RESOURCES_DIR ]] || {
+    echo "capture-pane: --ghostty requires Ghostty" >&2
+    exit 1
+  }
+  backend=ghostty
+elif [[ -n $TMUX && -n $HERDR_PANE_ID ]]; then
+  echo "capture-pane: both tmux and herdr detected; use --tmux, --herdr, or --ghostty" >&2
+  exit 2
+elif [[ -n $TMUX ]]; then
+  backend=tmux
 elif [[ -n $HERDR_PANE_ID ]]; then
+  backend=herdr
+elif [[ -n $GHOSTTY_RESOURCES_DIR ]]; then
+  backend=ghostty
+else
+  echo "capture-pane: unsupported terminal (need tmux, herdr, or Ghostty)" >&2
+  exit 1
+fi
+
+if [[ $backend == tmux ]]; then
+  tmux capture-pane -pS -
+elif [[ $backend == herdr ]]; then
   # Default depth is roughly the viewport; a large --lines asks for the whole
   # snapshot, which herdr's socket API caps at 1000 lines (v0.8.0)
   herdr pane read $HERDR_PANE_ID --lines 100000
-elif [[ -n $GHOSTTY_RESOURCES_DIR ]]; then
+else
   osascript -e '
 tell application "Ghostty"
     set t to focused terminal of selected tab of front window
@@ -24,7 +61,4 @@ end tell
     exit 1
   fi
   cat "$scrollback_file"
-else
-  echo "capture-pane: unsupported terminal (need tmux, herdr, or Ghostty)" >&2
-  exit 1
 fi
